@@ -91,23 +91,25 @@ function openaiMessagesToAnthropic(
           blocks.push({
             type: "text",
             text: typeof msg.content === "string" ? msg.content : "",
-          });
+          } as Anthropic.ContentBlock);
         }
         for (const tc of (
           msg as OpenAI.Chat.ChatCompletionAssistantMessageParam
         ).tool_calls ?? []) {
+          if (!("function" in tc)) continue;
+          const tcFn = (tc as { id: string; function: { name: string; arguments: string } });
           let input: unknown;
           try {
-            input = JSON.parse(tc.function.arguments);
+            input = JSON.parse(tcFn.function.arguments);
           } catch {
             input = {};
           }
           blocks.push({
             type: "tool_use",
-            id: tc.id,
-            name: tc.function.name,
+            id: tcFn.id,
+            name: tcFn.function.name,
             input: input as Record<string, unknown>,
-          });
+          } as Anthropic.ContentBlock);
         }
         result.push({ role: "assistant", content: blocks });
       } else {
@@ -137,14 +139,17 @@ function openaiMessagesToAnthropic(
 function openaiToolsToAnthropic(
   tools: OpenAI.Chat.ChatCompletionTool[],
 ): Anthropic.Tool[] {
-  return tools.map((t) => ({
-    name: t.function.name,
-    description: t.function.description ?? "",
-    input_schema: (t.function.parameters as Anthropic.Tool["input_schema"]) ?? {
-      type: "object",
-      properties: {},
-    },
-  }));
+  return tools.map((t) => {
+    const fn = (t as { function: { name: string; description?: string; parameters?: unknown } }).function;
+    return {
+      name: fn.name,
+      description: fn.description ?? "",
+      input_schema: (fn.parameters as Anthropic.Tool["input_schema"]) ?? {
+        type: "object",
+        properties: {},
+      },
+    };
+  });
 }
 
 // Convert OpenAI tool_choice to Anthropic tool_choice
@@ -815,7 +820,7 @@ router.post("/messages", async (req: Request, res: Response) => {
         }
 
         const content: Anthropic.ContentBlock[] = [];
-        if (text) content.push({ type: "text", text });
+        if (text) content.push({ type: "text", text } as Anthropic.ContentBlock);
         for (const tc of Object.values(toolCalls)) {
           let input: unknown;
           try {
@@ -828,7 +833,7 @@ router.post("/messages", async (req: Request, res: Response) => {
             id: tc.id,
             name: tc.name,
             input: input as Record<string, unknown>,
-          });
+          } as Anthropic.ContentBlock);
         }
 
         const stopReason: Anthropic.Message["stop_reason"] =
@@ -846,7 +851,7 @@ router.post("/messages", async (req: Request, res: Response) => {
           model,
           stop_reason: stopReason,
           stop_sequence: null,
-          usage: { input_tokens: 0, output_tokens: 0 },
+          usage: { input_tokens: 0, output_tokens: 0 } as Anthropic.Usage,
         };
         res.json(anthropicResponse);
       }
