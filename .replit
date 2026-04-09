@@ -9,7 +9,7 @@ id = "artifacts/mockup-sandbox"
 [deployment]
 router = "application"
 deploymentTarget = "autoscale"
-build = ["pnpm", "run", "build"]
+build = ["sh", "-c", "pnpm install && pnpm --filter @workspace/api-server run build && pnpm --filter @workspace/api-portal run build"]
 run = ["node", "--enable-source-maps", "artifacts/api-server/dist/index.mjs"]
 
 [deployment.postBuild]
