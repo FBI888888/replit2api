@@ -59,6 +59,37 @@ function isOpenAIModel(model: string): boolean {
   return model.startsWith("gpt-") || model.startsWith("o");
 }
 
+// Strip cache_control from system blocks and message content blocks
+// Replit's Anthropic proxy (Vertex AI) does not support cache_control
+function stripCacheControl<T extends object>(obj: T): T {
+  if (Array.isArray(obj)) {
+    return obj.map(stripCacheControl) as unknown as T;
+  }
+  if (obj && typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (k === "cache_control") continue;
+      result[k] = v && typeof v === "object" ? stripCacheControl(v as object) : v;
+    }
+    return result as T;
+  }
+  return obj;
+}
+
+function sanitizeSystem(
+  system: Anthropic.MessageCreateParamsNonStreaming["system"],
+): Anthropic.MessageCreateParamsNonStreaming["system"] {
+  if (!system) return system;
+  if (typeof system === "string") return system;
+  return (system as Anthropic.TextBlockParam[]).map((block) =>
+    stripCacheControl(block),
+  );
+}
+
+function sanitizeMessages(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  return messages.map((msg) => stripCacheControl(msg));
+}
+
 function isAnthropicModel(model: string): boolean {
   return model.startsWith("claude-");
 }
@@ -520,9 +551,9 @@ router.post("/messages", async (req: Request, res: Response) => {
 
       const params: Anthropic.MessageCreateParamsNonStreaming = {
         model,
-        messages,
+        messages: sanitizeMessages(messages as Anthropic.MessageParam[]),
         max_tokens,
-        ...(system ? { system } : {}),
+        ...(system ? { system: sanitizeSystem(system) } : {}),
         ...(tools ? { tools } : {}),
         ...(tool_choice ? { tool_choice } : {}),
       };
